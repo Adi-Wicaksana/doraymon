@@ -1,11 +1,28 @@
-const http = require('http');
+const { Client } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Hello, World!\n');
+const client = new Client({
+  puppeteer: {
+    args: ['--no-sandbox'],
+  }
 });
 
-const port = process.env.PORT || 3000;
-server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+client.on('qr', qr => {
+  qrcode.generate(qr, { small: true });
 });
+
+client.on('ready', () => {
+  console.log('Client is ready!');
+});
+
+client.on('message', message => {
+  console.log(message.body);
+});
+
+client.on('message', message => {
+  if (message.body === '!ping') {
+    message.reply('pong');
+  }
+});
+
+client.initialize();
