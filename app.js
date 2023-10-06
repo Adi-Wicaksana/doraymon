@@ -12,6 +12,19 @@ client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
 });
 
+client.on('authenticated', () => {
+  console.log('AUTHENTICATED');
+});
+
+client.on('auth_failure', msg => {
+  // Fired if session restore was unsuccessful
+  console.log('AUTHENTICATION FAILURE', msg);
+});
+
+client.on('disconnected', (reason) => {
+  console.log('Client was logged out', reason);
+})
+
 client.on('ready', () => {
   console.log('Client is ready!');
 });
