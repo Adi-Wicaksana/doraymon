@@ -8,8 +8,13 @@ const client = new Client({
   }
 });
 
+client.initialize();
+
+client.on('loading_screen', (percent, message) => {
+  console.log('LOADING SCREEN', percent, message);
+});
+
 client.on('qr', qr => {
-  console.log('qr');
   qrcode.generate(qr, { small: true });
 });
 
@@ -18,8 +23,7 @@ client.on('authenticated', () => {
 });
 
 client.on('auth_failure', msg => {
-  // Fired if session restore was unsuccessful
-  console.log('AUTHENTICATION FAILURE', msg);
+  console.error('AUTHENTICATION FAILURE', msg);
 });
 
 client.on('disconnected', (reason) => {
@@ -27,15 +31,13 @@ client.on('disconnected', (reason) => {
 })
 
 client.on('ready', () => {
-  console.log('Client is ready!');
+  console.log('READY');
 });
 
-client.on('message', message => {
-  if (message.body === '!ping') {
-    message.reply('pong');
+client.on('message', msg => {
+  if (msg.body == '!ping') {
+    msg.reply("pong");
   } else {
-    console.log(message.body);
+    console.log(msg.body);
   }
 });
-
-client.initialize();
