@@ -9,6 +9,7 @@ const client = new Client({
 });
 
 client.on('qr', qr => {
+  console.log('qr');
   qrcode.generate(qr, { small: true });
 });
 
@@ -30,12 +31,10 @@ client.on('ready', () => {
 });
 
 client.on('message', message => {
-  console.log(message.body);
-});
-
-client.on('message', message => {
   if (message.body === '!ping') {
     message.reply('pong');
+  } else {
+    console.log(message.body);
   }
 });
 
