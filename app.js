@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 
 const client = new Client({
   puppeteer: {
+    headless: "new",
     args: ['--no-sandbox'],
   }
 });
