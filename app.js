@@ -265,7 +265,6 @@ client.on('message', async msg => {
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
-        console.log('logPath', logPath);
         const logContent = await fs.readFile(`${logPath}`, 'utf-8');
         const logLines = logContent.split('\n');
         const formattedResponse = logLines.join('<br>'); // Use <br> for newline in HTML
