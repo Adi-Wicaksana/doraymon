@@ -26,7 +26,7 @@ const tabPhone = "PHONENUMBER";
 
 const env = process.env.ENV;
 var logPath = '';
-if (env == "develop") {
+if (env ==   "develop") {
     logPath = "app.log";
 } else if (env == "staging") {
     logPath = "/home/app/doraymon/app.log";
@@ -265,6 +265,7 @@ client.on('message', async msg => {
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
+        console.log('logPath', logPath);
         const logContent = await fs.readFile(`${logPath}`, 'utf-8');
         const logLines = logContent.split('\n');
         const formattedResponse = logLines.join('<br>'); // Use <br> for newline in HTML
