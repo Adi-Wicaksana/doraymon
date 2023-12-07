@@ -256,7 +256,7 @@ client.on('message', async msg => {
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
-        const logContent = await fs.readFile(process.env.LOG_PATH, 'utf-8');
+        const logContent = await fs.readFile(`${process.env.LOG_PATH}`, 'utf-8');
         const logLines = logContent.split('\n');
         const formattedResponse = logLines.join('<br>'); // Use <br> for newline in HTML
 
@@ -803,7 +803,7 @@ function log(message, level = LOG_LEVELS.INFO) {
     const logEntry = `[${timestamp}] [${level}] ${message}`;
 
     // Log to a file (append mode)
-    fs.appendFile(process.env.LOG_PATH, logEntry + '\n', (err) => {
+    fs.appendFile(`${process.env.LOG_PATH}`, logEntry + '\n', (err) => {
         if (err) {
             console.log('Error writing to log file:', err);
         }
