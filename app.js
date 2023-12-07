@@ -24,6 +24,15 @@ const sheetIdCAPA = process.env.SHEET_ID_CAPA;
 const tabCapa = " CAPA";
 const tabPhone = "PHONENUMBER";
 
+const env = process.env.ENV;
+var logPath = '';
+if (env == "develop") {
+    logPath = "app.log";
+} else if (env == "staging") {
+    logPath = "/home/app/doraymon/app.log";
+} else if (env == "production") {
+    logPath = `/home/app/doraymon/app.log`;
+}
 
 // =================================    WHATSAPP    ====================================
 const app = express();
@@ -256,7 +265,7 @@ client.on('message', async msg => {
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
-        const logContent = await fs.readFile(`${process.env.BASE_DIRECTORY}/app.log`, 'utf-8');
+        const logContent = await fs.readFile(`${logPath}`, 'utf-8');
         const logLines = logContent.split('\n');
         const formattedResponse = logLines.join('<br>'); // Use <br> for newline in HTML
 
@@ -803,7 +812,7 @@ function log(message, level = LOG_LEVELS.INFO) {
     const logEntry = `[${timestamp}] [${level}] ${message}`;
 
     // Log to a file (append mode)
-    fs.appendFile(`${process.env.BASE_DIRECTORY}/app.log`, logEntry + '\n', (err) => {
+    fs.appendFile(`${logPath}`, logEntry + '\n', (err) => {
         if (err) {
             console.log('Error writing to log file:', err);
         }
