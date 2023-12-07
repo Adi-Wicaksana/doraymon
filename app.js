@@ -31,7 +31,7 @@ if (env ==   "develop") {
 } else if (env == "staging") {
     logPath = "/home/app/doraymon/app.log";
 } else if (env == "production") {
-    logPath = `/home/app/doraymon/app.log`;
+    logPath = "/home/app/doraymon/app.log";
 }
 
 // =================================    WHATSAPP    ====================================
