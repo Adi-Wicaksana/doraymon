@@ -256,7 +256,7 @@ client.on('message', async msg => {
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
-        const logContent = await fs.readFile('app.log', 'utf-8');
+        const logContent = await fs.readFile(process.env.LOG_PATH, 'utf-8');
         const logLines = logContent.split('\n');
         const formattedResponse = logLines.join('<br>'); // Use <br> for newline in HTML
 
@@ -267,7 +267,7 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-app.get('/notification', async (req, res) => {
+app.get('/reminder-capa', async (req, res) => {
     try {
         var result = await getCapaReminder();
         res.send(result);
@@ -677,7 +677,7 @@ async function getCapaReminder() {
                         }
                     }
                 }
-                return { status: 200, data: capas, phones: phones };
+                return { status: 200, data: "success" };
             } else {
                 return { status: 200, data: {} }
             }
@@ -803,7 +803,7 @@ function log(message, level = LOG_LEVELS.INFO) {
     const logEntry = `[${timestamp}] [${level}] ${message}`;
 
     // Log to a file (append mode)
-    fs.appendFile('app.log', logEntry + '\n', (err) => {
+    fs.appendFile(process.env.LOG_PATH, logEntry + '\n', (err) => {
         if (err) {
             console.log('Error writing to log file:', err);
         }
