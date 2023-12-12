@@ -1,6 +1,5 @@
 // ===================================    Module    ====================================
 require('dotenv').config();
-
 const { Client } = require('whatsapp-web.js');
 const { google } = require('googleapis');
 
@@ -11,7 +10,34 @@ const fs = require('fs').promises;
 const axios = require('axios');
 const FormData = require('form-data');
 
-// Define log severity levels
+const healthCheckUrl = process.env.HEALTHCHECK_URL;
+
+// ==================================
+var env = process.env.NODE_ENV || "develop";
+
+var envPath = "";
+if (env === "develop") {
+    envPath = "";
+} else if (env === "staging" || env === "production") {
+    envPath = "/home/app/doraymon/.env";
+}
+
+
+var logPath = '';
+if (env == "develop") {
+    logPath = "app.log";
+} else if (env === "staging" || env === "production") {
+    envPath = "/home/app/doraymon/app.log";
+}
+
+// ==================================
+// Cron
+// var cron = require('node-cron');
+// cron.schedule('* * * * *', () => {
+//     performHealthCheck();
+// });
+
+// Log severity
 const LOG_LEVELS = {
     INFO: 'INFO',
     WARNING: 'WARNING',
@@ -24,16 +50,6 @@ const sheetIdCAPA = process.env.SHEET_ID_CAPA;
 const tabCapa = " CAPA";
 const tabPhone = "PHONENUMBER";
 
-const env = process.env.ENV;
-var logPath = '';
-if (env ==   "develop") {
-    logPath = "app.log";
-} else if (env == "staging") {
-    logPath = "/home/app/doraymon/app.log";
-} else if (env == "production") {
-    logPath = "/home/app/doraymon/app.log";
-}
-
 // =================================    WHATSAPP    ====================================
 const app = express();
 
@@ -44,7 +60,6 @@ const client = new Client({
     }
 });
 
-// Create a flag to track whether the client is already initialized
 let isClientInitialized = false;
 // initializeClient();
 
@@ -855,6 +870,14 @@ async function sendQRCodeToTelegram(qrCodeImageUrl) {
     }
 }
 // =====================================================================================
+
+async function performHealthCheck() {
+    try {
+        await axios.get(healthCheckUrl);
+    } catch (error) {
+        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] HC failed to ping!\n' + error);
+    }
+}
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000');
