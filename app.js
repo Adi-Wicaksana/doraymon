@@ -9,10 +9,13 @@ const express = require('express');
 const fs = require('fs').promises;
 const axios = require('axios');
 const FormData = require('form-data');
+const moment = require('moment');
+const cron = require('node-cron');
+const { startOfMonth, addDays, format, getDay } = require('date-fns');
 
+// ===================================    env    ====================================
 const healthCheckUrl = process.env.HEALTHCHECK_URL;
-
-// ==================================
+const capaGroup = process.env.CAPA_GROUP;
 var env = process.env.NODE_ENV || "develop";
 
 var envPath = "";
@@ -22,20 +25,12 @@ if (env === "develop") {
     envPath = "/home/app/doraymon/.env";
 }
 
-
 var logPath = '';
 if (env == "develop") {
     logPath = "app.log";
 } else if (env === "staging" || env === "production") {
     envPath = "/home/app/doraymon/app.log";
 }
-
-// ==================================
-// Cron
-// var cron = require('node-cron');
-// cron.schedule('* * * * *', () => {
-//     performHealthCheck();
-// });
 
 // Log severity
 const LOG_LEVELS = {
@@ -44,9 +39,9 @@ const LOG_LEVELS = {
     ERROR: 'ERROR',
 };
 
-// Google Sheet Environment
+// Google Sheet
 const serviceAccountKeyFile = "./doraymon-ff6b0213a80d.json";
-const sheetIdCAPA = process.env.SHEET_ID_CAPA;
+const sheetIdCapa = process.env.SHEET_ID_CAPA;
 const tabCapa = " CAPA";
 const tabPhone = "PHONENUMBER";
 
@@ -66,10 +61,16 @@ let isClientInitialized = false;
 // Create an endpoint to initialize the client
 app.get('/initialize', (req, res) => {
     if (isClientInitialized) {
-        res.send('Client is already initialized');
+        res.json({
+            status: 200,
+            message: 'Client is already initialized'
+        });
     } else {
         initializeClient();
-        res.send('Client initialized');
+        res.json({
+            status: 200,
+            message: 'Client initialized'
+        });
     }
 });
 
@@ -128,16 +129,59 @@ client.on('message', async msg => {
     else if (msg.body == '!help') {
         var help = '*!ping* : check monitoring CAPA is active, if the system reply pong = active \n';
         help += '*!checkcapa* : check validation data master CAPA \n';
-        help += '*!getcapapic [initial]* : get CAPA status OPEN depend on PIC \n';
-        help += '*!getcapadept [department]* : get CAPA status OPEN depend on department \n';
+        help += '*!getcapapic [initial]* : get CAPA status open depend on PIC \n';
+        help += '*!getcapadept [department]* : get CAPA status open depend on department \n';
+        help += '*!getcapaoverdue [department]* : get CAPA status open and overdue depend on department \n';
         msg.reply(help)
     }
     else if (msg.body.startsWith('!checkcapa')) {
-        var check = await checkCAPA();
+        var check = await checkCapa();
         if (check.status == 200) {
             msg.reply(check.data);
         } else {
             msg.reply("wait for moment and try again.");
+        }
+    }
+    else if (msg.body.startsWith('!getcapaoverdue ')) {
+        // Direct send a new message to a specific id
+        var dept = msg.body.split(' ')[1].toUpperCase();
+
+        if (dept.trim() == '') {
+            msg.reply("Please input the department.");
+        } else {
+            var capa = await getCapaOverdue(dept);
+            if (capa.status == 200) {
+                var data = capa.data;
+
+                let message = '*Department: ' + dept + '*\n\n';
+
+                if (data.hasOwnProperty(dept.toUpperCase())) {
+                    const deptData = data[dept.toUpperCase()]; // Access the property dynamically
+                    for (const pic in deptData) {
+                        if (deptData.hasOwnProperty(pic)) {
+                            const sumberCapaData = deptData[pic];
+                            message += `*PIC: ${pic}* \n`;
+
+                            for (const sumberCapa in sumberCapaData) {
+                                if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                    const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                    message += `*${sumberCapa}*\n`;
+
+                                    for (const deskripsiCapa of deskripsiCapaArray) {
+                                        message += "- " + deskripsiCapa + "\n";
+                                    }
+                                }
+                            }
+                            message += '\n';
+                        }
+                    }
+                } else {
+                    message += '*No CAPA* 🥳';
+                }
+                msg.reply(message);
+            } else {
+                msg.reply("Can't get data 🙏🏻. Try again later.");
+            }
         }
     }
     else if (msg.body.startsWith('!getcapapic ')) {
@@ -147,7 +191,7 @@ client.on('message', async msg => {
         if (pic.trim() == '') {
             msg.reply("Please input the PIC.");
         } else {
-            var capa = await getCAPAByPIC(pic);
+            var capa = await getCapaByPic(pic);
             if (capa.status == 200) {
                 var data = capa.data;
 
@@ -158,12 +202,11 @@ client.on('message', async msg => {
                     for (const property in picData) {
                         if (picData.hasOwnProperty(property)) {
                             const valuesArray = picData[property];
-                            message += `*=== ${property} ===*\n`;
+                            message += `*${property}*\n`;
 
                             for (const value of valuesArray) {
-                                message += "```" + "- " + value + "```" + "\n";
+                                message += "- " + value + "\n";
                             }
-                            message += '\n';
                         }
                     }
                 } else {
@@ -182,7 +225,7 @@ client.on('message', async msg => {
         if (dept.trim() == '') {
             msg.reply("Please input the department.");
         } else {
-            var capa = await getCAPAByDept(dept);
+            var capa = await getCapaByDept(dept);
             if (capa.status == 200) {
                 var data = capa.data;
 
@@ -198,14 +241,14 @@ client.on('message', async msg => {
                             for (const sumberCapa in sumberCapaData) {
                                 if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                    message += `*=== ${sumberCapa} ===*\n`;
+                                    message += `*${sumberCapa}*\n`;
 
                                     for (const deskripsiCapa of deskripsiCapaArray) {
-                                        message += "```" + "- " + deskripsiCapa + "```" + "\n";
+                                        message += "- " + deskripsiCapa + "\n";
                                     }
-                                    message += '\n';
                                 }
                             }
+                            message += '\n';
                         }
                     }
                 } else {
@@ -291,18 +334,35 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-app.get('/reminder-capa', async (req, res) => {
+app.use(express.json());
+app.post('/reminder-capa', async (req, res) => {
     try {
-        var result = await getCapaReminder();
-        res.send(result);
+        const requestBody = req.body;
+        var to = requestBody.to;
+
+        var reminder = await getCapaReminder(to.toUpperCase());
+        if (reminder.status == 200) {
+            res.json({
+                status: 200,
+                message: "trigger CAPA for " + to + " success."
+            })
+        } else {
+            res.json({
+                status: 500,
+                message: "trigger CAPA for " + to + " failed."
+            })
+        }
     } catch (error) {
-        console.error('Error reading log file:', error);
-        res.status(500).send('Internal Server Error');
+        console.error('Error processing request:', error);
+        res.json({
+            status: 500,
+            message: "Internal server error."
+        })
     }
 });
 
 // ==============================    Monitoring CAPA    ================================
-async function getInitializeCAPA() {
+async function getInitializeCapa() {
     try {
         // 0 No                             | 5 Lokasi                      | 10 Personil Terkait
         // 1 Nomor Dokumen Referensi CAPA   | 6 Waktu                       | 11 Dep Terkait
@@ -317,8 +377,8 @@ async function getInitializeCAPA() {
         // 19 Tanggal Pembuatan Verifikasi CAPA
 
         const googleSheetClient = await getGoogleSheetClient();
-        const capa = await readGoogleSheet(googleSheetClient, sheetIdCAPA, tabCapa);
-        const phones = await readGoogleSheet(googleSheetClient, sheetIdCAPA, tabPhone);
+        const capa = await readGoogleSheet(googleSheetClient, sheetIdCapa, tabCapa);
+        const phones = await readGoogleSheet(googleSheetClient, sheetIdCapa, tabPhone);
         return { status: 200, capas: capa, phones: phones }
     } catch (error) {
         log('Doraymon: get initialize CAPA\n' + error, LOG_LEVELS.ERROR);
@@ -327,9 +387,9 @@ async function getInitializeCAPA() {
     }
 }
 
-async function checkCAPA() {
+async function checkCapa() {
     try {
-        var raw = await getInitializeCAPA();
+        var raw = await getInitializeCapa();
 
         if (raw.status == 200) {
             var capas = raw.capas;
@@ -422,9 +482,9 @@ async function checkCAPA() {
     }
 }
 
-async function getCAPAByPIC(paramPic) {
+async function getCapaByPic(paramPic) {
     try {
-        var raw = await getInitializeCAPA();
+        var raw = await getInitializeCapa();
 
         if (raw.status == 200) {
             if (raw.capas.length > 0) {
@@ -481,9 +541,9 @@ async function getCAPAByPIC(paramPic) {
     }
 }
 
-async function getCAPAByDept(paramDept) {
+async function getCapaByDept(paramDept) {
     try {
-        var raw = await getInitializeCAPA();
+        var raw = await getInitializeCapa();
 
         if (raw.status == 200) {
             if (raw.capas.length > 0) {
@@ -546,13 +606,17 @@ async function getCAPAByDept(paramDept) {
     }
 }
 
-async function getCapaReminder() {
+async function getCapaReminder(to) {
     try {
-        var raw = await getInitializeCAPA();
+        var raw = await getInitializeCapa();
 
         if (raw.status == 200) {
             if (raw.capas.length > 0 && raw.phones.length > 0) {
-                var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
+                if (to == "ALL") {
+                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
+                } else {
+                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[16] && row[16].toUpperCase() === to.toUpperCase());
+                }
                 var phoneTemp = raw.phones;
 
                 // ===============================================================================
@@ -560,29 +624,38 @@ async function getCapaReminder() {
                 var capas = {};
                 for (var i = 0; i < capaTemp.length; i++) {
                     var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
+                    var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
                     var sumberCapa = capaTemp[i][3] ? capaTemp[i][3].trim() : '-';
                     var deskripsiCapa = capaTemp[i][15] ? capaTemp[i][15].trim() : '-';
                     var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
 
-                    if (pic.includes(',') || pic.includes('/')) {
-                        var picSplit = pic.split(/[,\/]/);
-                        for (var j = 0; j < picSplit.length; j++) {
-                            if (!capas.hasOwnProperty(picSplit[j].trim())) {
-                                capas[picSplit[j].toUpperCase().trim()] = {};
+                    if (isDateValid(targetDate)) {
+                        const targetDateObj = new Date(targetDate);
+                        const currentDate = new Date();
+                        if (targetDateObj.getMonth() === currentDate.getMonth() && targetDateObj.getFullYear() === currentDate.getFullYear()) {
+                            if (pic.includes(',') || pic.includes('/')) {
+                                var picSplit = pic.split(/[,\/]/);
+                                for (var j = 0; j < picSplit.length; j++) {
+                                    if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                        capas[picSplit[j].toUpperCase().trim()] = {};
+                                    }
+                                    if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                    }
+                                    capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                }
+                            } else {
+                                if (!capas.hasOwnProperty(pic)) {
+                                    capas[pic] = {};
+                                }
+                                if (!capas[pic].hasOwnProperty(sumberCapa)) {
+                                    capas[pic][sumberCapa] = [];
+                                }
+                                capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
                             }
-                            if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
-                                capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
-                            }
-                            capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
                         }
                     } else {
-                        if (!capas.hasOwnProperty(pic)) {
-                            capas[pic] = {};
-                        }
-                        if (!capas[pic].hasOwnProperty(sumberCapa)) {
-                            capas[pic][sumberCapa] = [];
-                        }
-                        capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                        sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
 
@@ -624,7 +697,7 @@ async function getCapaReminder() {
                             for (const sumberCapa in sumberCapaData) {
                                 if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                    message += `=== ${sumberCapa} ===\n`;
+                                    message += `<b>${sumberCapa}</b>\n`;
 
                                     for (const deskripsiCapa of deskripsiCapaArray) {
                                         message += "- " + deskripsiCapa + "\n";
@@ -632,7 +705,7 @@ async function getCapaReminder() {
                                 }
                             }
 
-                            sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA PIC ✖️✖️</b> \n' + message);
+                            sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
                         } else {
                             var number = '-';
                             var cc = '-';
@@ -645,39 +718,40 @@ async function getCapaReminder() {
                             }
 
                             if (!isValidPhoneNumber(number)) {
-                                message += '\n';
-                                message += `<b>PIC: ${pic}</b> \n\n`;
+                                message += `<b>Department: ${dept}</b>`;
+                                message += '\n\n';
+                                message += `<b>PIC: ${pic}</b> \n`;
                                 for (const sumberCapa in sumberCapaData) {
                                     if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                         const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += `=== ${sumberCapa} ===\n`;
+                                        message += ` ${sumberCapa} \n`;
 
                                         for (const deskripsiCapa of deskripsiCapaArray) {
                                             message += "- " + deskripsiCapa + "\n";
                                         }
-                                        message += '\n';
                                     }
                                 }
 
-                                message += 'Apa ada progress terbaru? Mohon untuk diupdate ya \n';
-                                message += '----------------------------------------------------';
+                                message += '\n';
 
-                                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA PIC Number ✖️✖️</b> \n" + message);
+                                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
                             } else {
-                                message += `*PIC: ${pic} @${number}* \n\n`;
+                                message += `*Department: ${dept}*`;
+                                message += '\n\n';
+                                message += `*PIC: ${pic} @${number}* \n`;
 
                                 for (const sumberCapa in sumberCapaData) {
                                     if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                         const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += `*=== ${sumberCapa} ===*\n`;
+                                        message += `*${sumberCapa}* \n`;
 
                                         for (const deskripsiCapa of deskripsiCapaArray) {
-                                            message += "```" + "- " + deskripsiCapa + "```" + "\n";
+                                            message += "- " + deskripsiCapa + "\n";
                                         }
-                                        message += '\n';
                                     }
                                 }
 
+                                message += '\n';
                                 message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
 
                                 if (isValidPhoneNumber(ccNumber)) {
@@ -686,7 +760,7 @@ async function getCapaReminder() {
 
                                 // Function to send a message to a group
                                 const chat = await client.getChats();
-                                const group = chat.find(chat => chat.isGroup && chat.name === "Testing Notification");
+                                const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
 
                                 if (group) {
                                     if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
@@ -715,6 +789,76 @@ async function getCapaReminder() {
     }
 }
 
+async function getCapaOverdue(paramDept) {
+    try {
+        var raw = await getInitializeCapa();
+
+        if (raw.status == 200) {
+            if (raw.capas.length > 0) {
+                var capaTemp = raw.capas
+                // Filter rows with "Open" status
+                const capas = capaTemp.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[17] && row[17].toUpperCase().includes(paramDept.toUpperCase()));
+
+                var result = {};
+
+                for (var i = 0; i < capas.length; i++) {
+                    var pic = capas[i][16] ? capas[i][16].toUpperCase().trim() : 'NOPIC';
+                    var dept = capas[i][17] ? capas[i][17].toUpperCase().trim() : 'NODEPT';
+                    var sumberCapa = capas[i][3] ? capas[i][3].trim() : '-';
+                    var deskripsiCapa = capas[i][15] ? capas[i][15].trim() : '-';
+                    var targetDate = capas[i][18] ? capas[i][18].trim() : '-';
+
+                    if (isDateValid(targetDate)) {
+                        const targetDateObj = new Date(targetDate);
+                        const currentDate = new Date();
+                        if (currentDate > targetDateObj) {
+                            if (dept.includes(',') || dept.includes('/')) {
+                                var deptSplit = dept.split(/[,\/]/);
+                                for (var j = 0; j < deptSplit.length; j++) {
+                                    if (deptSplit[j].toUpperCase().trim() === paramDept.toUpperCase()) {
+                                        if (!result.hasOwnProperty(deptSplit[j].trim())) {
+                                            result[deptSplit[j].toUpperCase().trim()] = {};
+                                        }
+                                        if (!result[deptSplit[j].trim()].hasOwnProperty(pic)) {
+                                            result[deptSplit[j].toUpperCase().trim()][pic] = {};
+                                        }
+                                        if (!result[deptSplit[j].trim()][pic].hasOwnProperty(sumberCapa)) {
+                                            result[deptSplit[j].toUpperCase().trim()][pic][sumberCapa] = [];
+                                        }
+                                        result[deptSplit[j].toUpperCase().trim()][pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                    }
+                                }
+                            } else {
+                                if (dept.toUpperCase() === paramDept.toUpperCase()) {
+                                    if (!result.hasOwnProperty(dept)) {
+                                        result[dept] = {};
+                                    }
+                                    if (!result[dept].hasOwnProperty(pic)) {
+                                        result[dept][pic] = {};
+                                    }
+                                    if (!result[dept][pic].hasOwnProperty(sumberCapa)) {
+                                        result[dept][pic][sumberCapa] = [];
+                                    }
+                                    result[dept][pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                }
+                            }
+                        }
+                    }
+                }
+                return { status: 200, data: result };
+            } else {
+                return { status: 200, data: {} }
+            }
+        } else {
+            return { status: 500, data: {} };
+        }
+    } catch (error) {
+        log('Doraymon: get CAPA by department\n' + error, LOG_LEVELS.ERROR);
+        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by department\n' + error);
+        return { status: 500, data: {} };
+    }
+}
+
 // Auth
 async function getGoogleSheetClient() {
     const auth = new google.auth.GoogleAuth({
@@ -729,7 +873,7 @@ async function getGoogleSheetClient() {
 }
 
 // Read Data
-async function readGoogleSheet(googleSheetClient, sheetIdCAPA, tabName) {
+async function readGoogleSheet(googleSheetClient, sheetIdCapa, tabName) {
     if (tabName == " CAPA") {
         var range = tabName + "!A:X";
     }
@@ -738,7 +882,7 @@ async function readGoogleSheet(googleSheetClient, sheetIdCAPA, tabName) {
     }
 
     const res = await googleSheetClient.spreadsheets.values.get({
-        spreadsheetId: sheetIdCAPA,
+        spreadsheetId: sheetIdCapa,
         range: range
     });
 
@@ -871,13 +1015,94 @@ async function sendQRCodeToTelegram(qrCodeImageUrl) {
 }
 // =====================================================================================
 
-async function performHealthCheck() {
+async function cronHc() {
     try {
         await axios.get(healthCheckUrl);
     } catch (error) {
         sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] HC failed to ping!\n' + error);
     }
 }
+
+function isDateValid(dateString) {
+    const parsedDate = moment(dateString, "DD MMM YYYY", true);
+    return parsedDate.isValid();
+}
+
+// =======================================================]
+async function cronReminder() {
+    // Example usage for the current year and month
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // month is 0-indexed
+
+    const datesAndDays = getDatesAndDaysOfMonth(currentYear, currentMonth);
+
+    // Hit API holiday
+    try {
+        const apiHoliday = await axios.get(`https://api-harilibur.vercel.app/api?month=${currentMonth}&year=${currentYear}`);
+
+        if (apiHoliday.status === 200) {
+            const apiHolidayData = apiHoliday.data;
+            var holidays = [];
+            for (var i = 0; i < apiHolidayData.length; i++) {
+                if (apiHolidayData[i].is_national_holiday == true) {
+                    holidays.push(apiHolidayData[i].holiday_date);
+                }
+            }
+
+            // Filter out null entries (weekends) and dates in holidays before using forEach
+            const filteredDatesAndDays = datesAndDays.filter(entry => entry !== null && !holidays.includes(entry.date));
+
+            if (filteredDatesAndDays.length > 0) {
+                // Find the max date in filteredDatesAndDays
+                const maxDate = filteredDatesAndDays.reduce((max, entry) => (new Date(entry.date) > new Date(max.date) ? entry : max), filteredDatesAndDays[0]);
+
+                // Get the current date
+                const currentDate = new Date();
+                const formattedCurrentDate = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}`;
+
+                // Check if the current date is the same as maxDate.date
+                if (maxDate.date === formattedCurrentDate) {
+                    getCapaReminder("ALL");
+                }
+            } else {
+                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
+            }
+        } else {
+            sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Failed to hit API holiday.")
+        }
+    } catch (error) {
+        sendLogTelegram("Doraymon: [" + LOG_LEVELS.ERROR + "] Holiday API " + error)
+    }
+}
+
+function getDatesAndDaysOfMonth(year, month) {
+    const firstDayOfMonth = startOfMonth(new Date(year, month - 1)); // month is 0-indexed
+
+    const datesAndDays = Array.from({ length: 5 }, (_, index) => {
+        const currentDate = addDays(firstDayOfMonth, index);
+
+        // Check if the current day is a weekend (0 is Sunday, 6 is Saturday)
+        const dayOfWeek = getDay(currentDate);
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+            // Skip weekends
+            return null;
+        }
+
+        return {
+            date: format(currentDate, 'yyyy-MM-dd'),
+            day: format(currentDate, 'EEEE'), // 'EEEE' gives the full weekday name
+        };
+    });
+
+    // Remove null entries (weekends)
+    const filteredDatesAndDays = datesAndDays.filter(entry => entry !== null);
+
+    return filteredDatesAndDays;
+}
+
+// Schedule the job with the cron expression
+// const capaReminder = cron.schedule('30 7 1-5 * *', cronReminder); // per tanggal 5 (CAPA bulan berjalan)
+// const healthCheck = cron.schedule('* * * * *', cronHc)
 
 app.listen(3000, () => {
     console.log('Server is running on port 3000');
