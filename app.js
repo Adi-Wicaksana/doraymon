@@ -131,7 +131,7 @@ client.on('message', async msg => {
         help += '*!checkcapa* : check validation data master CAPA \n';
         help += '*!getcapapic [initial]* : get CAPA status open depend on PIC \n';
         help += '*!getcapadept [department]* : get CAPA status open depend on department \n';
-        help += '*!getcapaoverdue [department]* : get CAPA status open and overdue depend on department \n';
+        // help += '*!getcapaoverdue [department]* : get CAPA status open and overdue depend on department \n';
         msg.reply(help)
     }
     else if (msg.body.startsWith('!checkcapa')) {
@@ -444,11 +444,13 @@ async function checkCapa() {
                 var pic = phones[m][3];
                 var phone = phones[m][4];
                 var cc = phones[m][5];
+                var slot = phones[m][6];
 
                 phonebooks[pic] = {
                     phone: phone,
                     cc: cc,
                     phonecc: null,
+                    slot: slot
                 };
             }
 
@@ -663,7 +665,7 @@ async function getCapaReminder(to) {
                 // ======== Collect Phones
                 const phones = {};
                 phoneTemp.slice(1).forEach(row => {
-                    const [no, dept, line, spv, noWa, atasan] = row;
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
 
                     const pic = spv.toUpperCase();
                     const pn = noWa || '';
@@ -676,7 +678,7 @@ async function getCapaReminder(to) {
                 });
 
                 phoneTemp.slice(1).forEach(row => {
-                    const [no, dept, line, spv, noWa, atasan] = row;
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
 
                     const pic = spv.toUpperCase();
                     const superior = atasan.toUpperCase();
@@ -859,6 +861,195 @@ async function getCapaOverdue(paramDept) {
     }
 }
 
+async function getCapaEveryFriday(paramSlot) {
+    try {
+        var raw = await getInitializeCapa();
+
+        if (raw.status == 200) {
+            if (raw.capas.length > 0 && raw.phones.length > 0) {
+                var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
+
+                var phoneTemp = raw.phones;
+
+                // ===============================================================================
+                // ======== Collect CAPA
+                var capas = {};
+                for (var i = 0; i < capaTemp.length; i++) {
+                    var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
+                    var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
+                    var sumberCapa = capaTemp[i][3] ? capaTemp[i][3].trim() : '-';
+                    var deskripsiCapa = capaTemp[i][15] ? capaTemp[i][15].trim() : '-';
+                    var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
+
+                    if (isDateValid(targetDate)) {
+                        const targetDateObj = new Date(targetDate);
+                        const currentDate = new Date();
+                        if (targetDateObj.getMonth() === currentDate.getMonth() && targetDateObj.getFullYear() === currentDate.getFullYear()) {
+                            if (pic.includes(',') || pic.includes('/')) {
+                                var picSplit = pic.split(/[,\/]/);
+                                for (var j = 0; j < picSplit.length; j++) {
+                                    if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                        capas[picSplit[j].toUpperCase().trim()] = {};
+                                    }
+                                    if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                    }
+                                    capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                }
+                            } else {
+                                if (!capas.hasOwnProperty(pic)) {
+                                    capas[pic] = {};
+                                }
+                                if (!capas[pic].hasOwnProperty(sumberCapa)) {
+                                    capas[pic][sumberCapa] = [];
+                                }
+                                capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                            }
+                        }
+                    } else {
+                        sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
+                    }
+                }
+
+                // ===============================================================================
+                // ======== Collect Phones
+                const phones = {};
+                phoneTemp.slice(1).forEach(row => {
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
+
+                    const pic = spv.toUpperCase();
+                    const pn = noWa || '';
+
+                    phones[pic] = {
+                        pn,
+                        superior: atasan.toUpperCase(),
+                        superiorPn: '',
+                        slot
+                    };
+                });
+
+                phoneTemp.slice(1).forEach(row => {
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
+
+                    const pic = spv.toUpperCase();
+                    const superior = atasan.toUpperCase();
+
+                    phones[pic].superiorPn = phones[superior] ? phones[superior].pn : '';
+                });
+
+                // ========================= SEND NOTIFICATION =========================
+                // Loop through the main object
+                for (const pic in capas) {
+                    var message = '';
+
+                    if (capas.hasOwnProperty(pic)) {
+                        const sumberCapaData = capas[pic];
+
+                        if (pic == "NOPIC") {
+                            message += '\n';
+                            for (const sumberCapa in sumberCapaData) {
+                                if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                    const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                    message += `<b>${sumberCapa}</b>\n`;
+
+                                    for (const deskripsiCapa of deskripsiCapaArray) {
+                                        message += "- " + deskripsiCapa + "\n";
+                                    }
+                                }
+                            }
+
+                            sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
+                        } else {
+                            var number = '-';
+                            var cc = '-';
+                            var ccNumber = '-';
+                            var slot = '-';
+
+                            if (phones.hasOwnProperty(pic)) {
+                                number = phones[pic].pn;
+                                cc = phones[pic].superior;
+                                ccNumber = phones[pic].superiorPn;
+                                slot = phones[pic].slot;
+                            }
+
+                            if (!isValidPhoneNumber(number)) {
+                                message += `<b>Department: ${dept}</b>`;
+                                message += '\n\n';
+                                message += `<b>PIC: ${pic}</b> \n`;
+                                for (const sumberCapa in sumberCapaData) {
+                                    if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                        const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                        message += ` ${sumberCapa} \n`;
+
+                                        for (const deskripsiCapa of deskripsiCapaArray) {
+                                            message += "- " + deskripsiCapa + "\n";
+                                        }
+                                    }
+                                }
+
+                                message += '\n';
+
+                                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
+                            } else {
+                                message += `*Department: ${dept}*`;
+                                message += '\n\n';
+                                message += `*PIC: ${pic} @${number}* \n`;
+
+                                for (const sumberCapa in sumberCapaData) {
+                                    if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                        const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                        message += `*${sumberCapa}* \n`;
+
+                                        for (const deskripsiCapa of deskripsiCapaArray) {
+                                            message += "- " + deskripsiCapa + "\n";
+                                        }
+                                    }
+                                }
+
+                                message += '\n';
+                                message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
+
+                                if (isValidPhoneNumber(ccNumber)) {
+                                    message += `\n\ncc: ${cc} @${ccNumber}`;
+                                }
+
+                                // Function to send a message to a group
+                                const chat = await client.getChats();
+                                const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
+
+                                if (slot == null || slot == "" || slot == undefined || slot == "-") {
+                                    sendLogTelegram(`Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ PIC NO SLOT ✖️✖️</b> ${pic} \n`);
+                                } else {
+                                    if (slot == paramSlot) {
+                                        if (group) {
+                                            if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
+                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
+                                            } else if (isValidPhoneNumber(number)) {
+                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                            }
+                                        } else {
+                                            log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return { status: 200, data: "success" };
+            } else {
+                return { status: 200, data: {} }
+            }
+        } else {
+            return { status: 500, data: {} };
+        }
+    } catch (error) {
+        log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
+        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA reminder\n' + error);
+        return { status: 500, data: {} };
+    }
+}
+
 // Auth
 async function getGoogleSheetClient() {
     const auth = new google.auth.GoogleAuth({
@@ -878,7 +1069,7 @@ async function readGoogleSheet(googleSheetClient, sheetIdCapa, tabName) {
         var range = tabName + "!A:X";
     }
     if (tabName == "PHONENUMBER") {
-        var range = tabName + "!A:F";
+        var range = tabName + "!A:G";
     }
 
     const res = await googleSheetClient.spreadsheets.values.get({
@@ -1100,10 +1291,42 @@ function getDatesAndDaysOfMonth(year, month) {
     return filteredDatesAndDays;
 }
 
+async function cronFriday(slot) {
+    try {
+        await getCapaEveryFriday(slot);
+    } catch (error) {
+        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Failed cron friday!\n' + error);
+    }
+}
+
 // Schedule the job with the cron expression
 // const capaReminder = cron.schedule('30 7 1-5 * *', cronReminder); // per tanggal 5 (CAPA bulan berjalan)
 // const healthCheck = cron.schedule('* * * * *', cronHc)
 
+const capaFridayOne = cron.schedule('30 8 * * 5', () => {
+    cronFriday(1)
+})
+const capaFridayTwo = cron.schedule('45 9 * * 5', () => {
+    cronFriday(2)
+})
+const capaFridayThree = cron.schedule('30 10 * * 5', () => {
+    cronFriday(3)
+})
+const capaFridayFour = cron.schedule('45 10 * * 5', () => {
+    cronFriday(4)
+})
+const capaFridayFive = cron.schedule('0 13 * * 5', () => {
+    cronFriday(5)
+})
+const capaFridaySix = cron.schedule('30 13 * * 5', () => {
+    cronFriday(6)
+})
+const capaFridaySeven = cron.schedule('45 13 * * 5', () => {
+    cronFriday(7)
+})
+const capaFridayEight = cron.schedule('00 14 * * 5', () => {
+    cronFriday(8)
+})
 app.listen(3000, () => {
     console.log('Server is running on port 3000');
 });
