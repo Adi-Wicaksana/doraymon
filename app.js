@@ -10,6 +10,12 @@ const fs = require('fs').promises;
 const axios = require('axios');
 const FormData = require('form-data');
 const moment = require('moment');
+moment.updateLocale('id', {
+    monthsShort: [
+        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    ],
+});
 const cron = require('node-cron');
 const { startOfMonth, addDays, format, getDay } = require('date-fns');
 
@@ -75,11 +81,11 @@ app.get('/initialize', (req, res) => {
 });
 
 // Initialize the client
-function initializeClient() {
+async function initializeClient() {
     if (!isClientInitialized) {
         client.initialize();
         log('Doraymon: initialize client WhatsApp', LOG_LEVELS.INFO);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> initialize client WhatsApp </b>');
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> initialize client WhatsApp </b>');
         isClientInitialized = true;
     }
 }
@@ -96,33 +102,33 @@ client.on('qr', async (qr) => {
         sendQRCodeToTelegram(qrCodeImage);
     } catch (error) {
         log('Doraymon: generate QRCode\n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Generate QRCode\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Generate QRCode\n' + error);
     }
 });
 
-client.on('authenticated', () => {
+client.on('authenticated', async () => {
     log('Doraymon: WhatsApp authenticated', LOG_LEVELS.INFO);
-    sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp authenticated </b>');
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp authenticated </b>');
 });
 
-client.on('auth_failure', msg => {
+client.on('auth_failure', async (msg) => {
     log(`Doraymon: WhatsApp authenticated failure`, LOG_LEVELS.WARNING);
-    sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp authenticated failure </b>');
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp authenticated failure </b>');
 });
 
-client.on('disconnected', (reason) => {
+client.on('disconnected', async (reason) => {
     isClientInitialized = false;
     log(`Doraymon: WhatsApp disconnected`, LOG_LEVELS.WARNING);
-    sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp disconnected </b>');
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp disconnected </b>');
 })
 
-client.on('ready', () => {
+client.on('ready', async () => {
     isClientInitialized = true;
     log(`Doraymon: WhatsApp ready`, LOG_LEVELS.INFO);
-    sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp ready </b>');
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp ready </b>');
 });
 
-client.on('message', async msg => {
+client.on('message_create', async msg => {
     if (msg.body == '!ping') {
         msg.reply("pong");
     }
@@ -346,6 +352,11 @@ app.post('/reminder-capa', async (req, res) => {
                 status: 200,
                 message: "trigger CAPA for " + to + " success."
             })
+        } else if (reminder.status == 201) {
+            res.json({
+                status: 200,
+                message: "trigger CAPA for " + to + " empty."
+            })
         } else {
             res.json({
                 status: 500,
@@ -382,7 +393,7 @@ async function getInitializeCapa() {
         return { status: 200, capas: capa, phones: phones }
     } catch (error) {
         log('Doraymon: get initialize CAPA\n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get initialize CAPA\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get initialize CAPA\n' + error);
         return { status: 500, capas: [], phones: [] }
     }
 }
@@ -471,11 +482,11 @@ async function checkCapa() {
             }
 
             var data =
-                'CAPA tanpa status\nNo: *' + capaNoStatus.join(',') +
-                '*\n==========================\n' +
-                'CAPA Open tanpa PIC\nNo: *' + capaNoPIC.join(',') +
-                '*\n==========================\n' +
-                'CAPA Open tetapi PIC tidak terdaftar pada sheet PHONENUMBER\nInit: *' + picNotExist.join(',') + '*';
+                'CAPA tanpa status\nNo: ' + capaNoStatus.join(', ') +
+                '\n==========================\n' +
+                'CAPA Open tanpa PIC\nNo: ' + capaNoPIC.join(', ') +
+                '\n==========================\n' +
+                'CAPA Open tetapi PIC tidak terdaftar pada sheet PHONENUMBER\nInit: ' + picNotExist.join(', ');
 
             return { status: 200, message: 'success', data: data };
         }
@@ -538,7 +549,7 @@ async function getCapaByPic(paramPic) {
         }
     } catch (error) {
         log('Doraymon: get CAPA by PIC\n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by PIC\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by PIC\n' + error);
         return { status: 500, data: {} };
     }
 }
@@ -603,7 +614,7 @@ async function getCapaByDept(paramDept) {
         }
     } catch (error) {
         log('Doraymon: get CAPA by department\n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by department\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by department\n' + error);
         return { status: 500, data: {} };
     }
 }
@@ -617,7 +628,7 @@ async function getCapaReminder(to) {
                 if (to == "ALL") {
                     var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
                 } else {
-                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[16] && row[16].toUpperCase() === to.toUpperCase());
+                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[16] && row[16].toUpperCase().includes(to.toUpperCase()));
                 }
                 var phoneTemp = raw.phones;
 
@@ -632,19 +643,31 @@ async function getCapaReminder(to) {
                     var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
 
                     if (isDateValid(targetDate)) {
-                        const targetDateObj = new Date(targetDate);
-                        const currentDate = new Date();
-                        if (targetDateObj.getMonth() === currentDate.getMonth() && targetDateObj.getFullYear() === currentDate.getFullYear()) {
+                        const targetDateObj = moment(targetDate, 'DD MMM YYYY', 'id', true);
+                        const currentDate = moment();
+                        if (targetDateObj.month() === currentDate.month() && targetDateObj.year() === currentDate.year()) {
                             if (pic.includes(',') || pic.includes('/')) {
                                 var picSplit = pic.split(/[,\/]/);
                                 for (var j = 0; j < picSplit.length; j++) {
-                                    if (!capas.hasOwnProperty(picSplit[j].trim())) {
-                                        capas[picSplit[j].toUpperCase().trim()] = {};
+                                    if (to.toUpperCase() == "ALL") {
+                                        if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                            capas[picSplit[j].toUpperCase().trim()] = {};
+                                        }
+                                        if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                            capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                        }
+                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                    } else {
+                                        if (to.toUpperCase() == picSplit[j].toUpperCase()) {
+                                            if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                                capas[picSplit[j].toUpperCase().trim()] = {};
+                                            }
+                                            if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                                capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                            }
+                                            capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                        }
                                     }
-                                    if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
-                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
-                                    }
-                                    capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
                                 }
                             } else {
                                 if (!capas.hasOwnProperty(pic)) {
@@ -657,7 +680,7 @@ async function getCapaReminder(to) {
                             }
                         }
                     } else {
-                        sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
+                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
 
@@ -707,7 +730,7 @@ async function getCapaReminder(to) {
                                 }
                             }
 
-                            sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
+                            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
                         } else {
                             var number = '-';
                             var cc = '-';
@@ -736,7 +759,7 @@ async function getCapaReminder(to) {
 
                                 message += '\n';
 
-                                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
+                                await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
                             } else {
                                 message += `*Department: ${dept}*`;
                                 message += '\n\n';
@@ -764,14 +787,19 @@ async function getCapaReminder(to) {
                                 const chat = await client.getChats();
                                 const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
 
-                                if (group) {
-                                    if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
-                                        await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
-                                    } else if (isValidPhoneNumber(number)) {
-                                        await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                try {
+                                    if (group) {
+                                        if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
+                                            await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
+                                        } else if (isValidPhoneNumber(number)) {
+                                            await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                        }
+                                    } else {
+                                        log('Doraymon: get CAPA reminder \n cannot find group.', LOG_LEVELS.WARNING);
+                                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot find group.');
                                     }
-                                } else {
-                                    log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
+                                } catch (error) {
+                                    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot mention ' + number + ' cc : ' + ccNumber);
                                 }
                             }
                         }
@@ -779,14 +807,14 @@ async function getCapaReminder(to) {
                 }
                 return { status: 200, data: "success" };
             } else {
-                return { status: 200, data: {} }
+                return { status: 201, data: {} }
             }
         } else {
             return { status: 500, data: {} };
         }
     } catch (error) {
         log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA reminder\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA reminder error \nCheck API Log.');
         return { status: 500, data: {} };
     }
 }
@@ -811,8 +839,8 @@ async function getCapaOverdue(paramDept) {
                     var targetDate = capas[i][18] ? capas[i][18].trim() : '-';
 
                     if (isDateValid(targetDate)) {
-                        const targetDateObj = new Date(targetDate);
-                        const currentDate = new Date();
+                        const targetDateObj = moment(targetDate, 'DD MMM YYYY', 'id', true);
+                        const currentDate = moment();
                         if (currentDate > targetDateObj) {
                             if (dept.includes(',') || dept.includes('/')) {
                                 var deptSplit = dept.split(/[,\/]/);
@@ -856,7 +884,7 @@ async function getCapaOverdue(paramDept) {
         }
     } catch (error) {
         log('Doraymon: get CAPA by department\n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by department\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA by department\n' + error);
         return { status: 500, data: {} };
     }
 }
@@ -882,9 +910,9 @@ async function getCapaEveryFriday(paramSlot) {
                     var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
 
                     if (isDateValid(targetDate)) {
-                        const targetDateObj = new Date(targetDate);
-                        const currentDate = new Date();
-                        if (targetDateObj.getMonth() === currentDate.getMonth() && targetDateObj.getFullYear() === currentDate.getFullYear()) {
+                        const targetDateObj = moment(targetDate, 'DD MMM YYYY', 'id', true);
+                        const currentDate = moment();
+                        if (targetDateObj.month() === currentDate.month() && targetDateObj.year() === currentDate.year()) {
                             if (pic.includes(',') || pic.includes('/')) {
                                 var picSplit = pic.split(/[,\/]/);
                                 for (var j = 0; j < picSplit.length; j++) {
@@ -907,7 +935,7 @@ async function getCapaEveryFriday(paramSlot) {
                             }
                         }
                     } else {
-                        sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
+                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
 
@@ -958,7 +986,7 @@ async function getCapaEveryFriday(paramSlot) {
                                 }
                             }
 
-                            sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
+                            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA NO PIC ✖️✖️</b> \n' + message);
                         } else {
                             var number = '-';
                             var cc = '-';
@@ -989,7 +1017,7 @@ async function getCapaEveryFriday(paramSlot) {
 
                                 message += '\n';
 
-                                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
+                                await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
                             } else {
                                 message += `*Department: ${dept}*`;
                                 message += '\n\n';
@@ -1018,17 +1046,22 @@ async function getCapaEveryFriday(paramSlot) {
                                 const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
 
                                 if (slot == null || slot == "" || slot == undefined || slot == "-") {
-                                    sendLogTelegram(`Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ PIC NO SLOT ✖️✖️</b> ${pic} \n`);
+                                    await sendLogTelegram(`Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ PIC NO SLOT ✖️✖️</b> ${pic} \n`);
                                 } else {
                                     if (slot == paramSlot) {
-                                        if (group) {
-                                            if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
-                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
-                                            } else if (isValidPhoneNumber(number)) {
-                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                        try {
+                                            if (group) {
+                                                if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
+                                                    await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
+                                                } else if (isValidPhoneNumber(number)) {
+                                                    await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                                }
+                                            } else {
+                                                log('Doraymon: get CAPA every friday \n cannot find group.', LOG_LEVELS.WARNING);
+                                                await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA every friday \ncannot find group.');
                                             }
-                                        } else {
-                                            log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
+                                        } catch (error) {
+                                            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA every friday \ncannot mention ' + number + ' cc : ' + ccNumber);
                                         }
                                     }
                                 }
@@ -1044,8 +1077,8 @@ async function getCapaEveryFriday(paramSlot) {
             return { status: 500, data: {} };
         }
     } catch (error) {
-        log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA reminder\n' + error);
+        log('Doraymon: get CAPA every friday \n' + error, LOG_LEVELS.ERROR);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA every friday \n' + error);
         return { status: 500, data: {} };
     }
 }
@@ -1210,7 +1243,7 @@ async function cronHc() {
     try {
         await axios.get(healthCheckUrl);
     } catch (error) {
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] HC failed to ping!\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] HC failed to ping!\n' + error);
     }
 }
 
@@ -1256,13 +1289,13 @@ async function cronReminder() {
                     getCapaReminder("ALL");
                 }
             } else {
-                sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
+                await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
             }
         } else {
-            sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Failed to hit API holiday.")
+            await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Failed to hit API holiday.")
         }
     } catch (error) {
-        sendLogTelegram("Doraymon: [" + LOG_LEVELS.ERROR + "] Holiday API " + error)
+        await sendLogTelegram("Doraymon: [" + LOG_LEVELS.ERROR + "] Holiday API " + error)
     }
 }
 
@@ -1295,38 +1328,63 @@ async function cronFriday(slot) {
     try {
         await getCapaEveryFriday(slot);
     } catch (error) {
-        sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Failed cron friday!\n' + error);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Failed cron friday!\n' + error);
     }
 }
+
+// Serve HTML page for the root path
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+// Handle form submission
+app.post('/submit', (req, res) => {
+    let data = '';
+
+    // Event listener for receiving data chunks
+    req.on('data', chunk => {
+        data += chunk;
+    });
+
+    // Event listener for end of data stream
+    req.on('end', () => {
+        const formData = new URLSearchParams(data);
+        const username = formData.get('username');
+
+        // Respond with a simple message
+        res.send(`Hello, ${username}!`);
+    });
+});
 
 // Schedule the job with the cron expression
 // const capaReminder = cron.schedule('30 7 1-5 * *', cronReminder); // per tanggal 5 (CAPA bulan berjalan)
 // const healthCheck = cron.schedule('* * * * *', cronHc)
 
-const capaFridayOne = cron.schedule('30 8 * * 5', () => {
-    cronFriday(1)
-})
-const capaFridayTwo = cron.schedule('45 9 * * 5', () => {
-    cronFriday(2)
-})
-const capaFridayThree = cron.schedule('30 10 * * 5', () => {
-    cronFriday(3)
-})
-const capaFridayFour = cron.schedule('45 10 * * 5', () => {
-    cronFriday(4)
-})
-const capaFridayFive = cron.schedule('0 13 * * 5', () => {
-    cronFriday(5)
-})
-const capaFridaySix = cron.schedule('30 13 * * 5', () => {
-    cronFriday(6)
-})
-const capaFridaySeven = cron.schedule('45 13 * * 5', () => {
-    cronFriday(7)
-})
-const capaFridayEight = cron.schedule('00 14 * * 5', () => {
-    cronFriday(8)
-})
-app.listen(3000, () => {
-    console.log('Server is running on port 3000');
+// const capaFridayOne = cron.schedule('30 8 * * 5', () => {
+//     cronFriday(1)
+// })
+// const capaFridayTwo = cron.schedule('45 9 * * 5', () => {
+//     cronFriday(2)
+// })
+// const capaFridayThree = cron.schedule('30 10 * * 5', () => {
+//     cronFriday(3)
+// })
+// const capaFridayFour = cron.schedule('45 10 * * 5', () => {
+//     cronFriday(4)
+// })
+// const capaFridayFive = cron.schedule('0 13 * * 5', () => {
+//     cronFriday(5)
+// })
+// const capaFridaySix = cron.schedule('30 13 * * 5', () => {
+//     cronFriday(6)
+// })
+// const capaFridaySeven = cron.schedule('45 13 * * 5', () => {
+//     cronFriday(7)
+// })
+// const capaFridayEight = cron.schedule('00 14 * * 5', () => {
+//     cronFriday(8)
+// })
+
+app.listen(process.env.PORT, () => {
+    console.log(`Server is running on port ${process.env.PORT}`);
 });
