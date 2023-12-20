@@ -61,6 +61,13 @@ const client = new Client({
     }
 });
 
+const client2 = new Client({
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox'],
+    }
+});
+
 let isClientInitialized = false;
 // initializeClient();
 
@@ -84,7 +91,7 @@ app.get('/initialize', (req, res) => {
 async function initializeClient() {
     if (!isClientInitialized) {
         client.initialize();
-        log('Doraymon: initialize client WhatsApp', LOG_LEVELS.INFO);
+        log('Doraymon: initialize client 1 WhatsApp', LOG_LEVELS.INFO);
         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> initialize client WhatsApp </b>');
         isClientInitialized = true;
     }
@@ -372,6 +379,37 @@ app.post('/reminder-capa', async (req, res) => {
     }
 });
 
+app.post('/friday-capa', async (req, res) => {
+    try {
+        const requestBody = req.body;
+        var slot = requestBody.slot;
+
+        var reminder = await getCapaEveryFriday(slot);
+        if (reminder.status == 200) {
+            res.json({
+                status: 200,
+                message: "trigger CAPA friday slot " + slot + " success."
+            })
+        } else if (reminder.status == 201) {
+            res.json({
+                status: 200,
+                message: "trigger CAPA friday slot " + slot + " empty."
+            })
+        } else {
+            res.json({
+                status: 500,
+                message: "trigger CAPA friday slot " + slot + " failed."
+            })
+        }
+    } catch (error) {
+        console.error('Error processing request:', error);
+        res.json({
+            status: 500,
+            message: "Internal server error."
+        })
+    }
+});
+
 // ==============================    Monitoring CAPA    ================================
 async function getInitializeCapa() {
     try {
@@ -633,8 +671,35 @@ async function getCapaReminder(to) {
                 var phoneTemp = raw.phones;
 
                 // ===============================================================================
+                // ======== Collect Phones
+                const phones = {};
+                phoneTemp.slice(1).forEach(row => {
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
+
+                    const pic = spv.toUpperCase();
+                    const pn = noWa || '';
+
+                    phones[pic] = {
+                        pn,
+                        superior: atasan.toUpperCase(),
+                        superiorPn: ''
+                    };
+                });
+
+                phoneTemp.slice(1).forEach(row => {
+                    const [no, dept, line, spv, noWa, atasan, slot] = row;
+
+                    const pic = spv.toUpperCase();
+                    const superior = atasan.toUpperCase();
+
+                    phones[pic].superiorPn = phones[superior] ? phones[superior].pn : '';
+                });
+
+                // ===============================================================================
                 // ======== Collect CAPA
                 var capas = {};
+                var depts = {};
+
                 for (var i = 0; i < capaTemp.length; i++) {
                     var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
                     var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
@@ -668,6 +733,7 @@ async function getCapaReminder(to) {
                                             capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
                                         }
                                     }
+                                    depts[picSplit[j].toUpperCase().trim()] = dept;
                                 }
                             } else {
                                 if (!capas.hasOwnProperty(pic)) {
@@ -677,37 +743,13 @@ async function getCapaReminder(to) {
                                     capas[pic][sumberCapa] = [];
                                 }
                                 capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                depts[pic] = dept;
                             }
                         }
                     } else {
                         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
-
-                // ===============================================================================
-                // ======== Collect Phones
-                const phones = {};
-                phoneTemp.slice(1).forEach(row => {
-                    const [no, dept, line, spv, noWa, atasan, slot] = row;
-
-                    const pic = spv.toUpperCase();
-                    const pn = noWa || '';
-
-                    phones[pic] = {
-                        pn,
-                        superior: atasan.toUpperCase(),
-                        superiorPn: ''
-                    };
-                });
-
-                phoneTemp.slice(1).forEach(row => {
-                    const [no, dept, line, spv, noWa, atasan, slot] = row;
-
-                    const pic = spv.toUpperCase();
-                    const superior = atasan.toUpperCase();
-
-                    phones[pic].superiorPn = phones[superior] ? phones[superior].pn : '';
-                });
 
                 // ========================= SEND NOTIFICATION =========================
                 // Loop through the main object
@@ -716,6 +758,7 @@ async function getCapaReminder(to) {
 
                     if (capas.hasOwnProperty(pic)) {
                         const sumberCapaData = capas[pic];
+                        var dept = depts[pic];
 
                         if (pic == "NOPIC") {
                             message += '\n';
@@ -900,46 +943,6 @@ async function getCapaEveryFriday(paramSlot) {
                 var phoneTemp = raw.phones;
 
                 // ===============================================================================
-                // ======== Collect CAPA
-                var capas = {};
-                for (var i = 0; i < capaTemp.length; i++) {
-                    var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
-                    var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
-                    var sumberCapa = capaTemp[i][3] ? capaTemp[i][3].trim() : '-';
-                    var deskripsiCapa = capaTemp[i][15] ? capaTemp[i][15].trim() : '-';
-                    var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
-
-                    if (isDateValid(targetDate)) {
-                        const targetDateObj = moment(targetDate, 'DD MMM YYYY', 'id', true);
-                        const currentDate = moment();
-                        if (targetDateObj.month() === currentDate.month() && targetDateObj.year() === currentDate.year()) {
-                            if (pic.includes(',') || pic.includes('/')) {
-                                var picSplit = pic.split(/[,\/]/);
-                                for (var j = 0; j < picSplit.length; j++) {
-                                    if (!capas.hasOwnProperty(picSplit[j].trim())) {
-                                        capas[picSplit[j].toUpperCase().trim()] = {};
-                                    }
-                                    if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
-                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
-                                    }
-                                    capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
-                                }
-                            } else {
-                                if (!capas.hasOwnProperty(pic)) {
-                                    capas[pic] = {};
-                                }
-                                if (!capas[pic].hasOwnProperty(sumberCapa)) {
-                                    capas[pic][sumberCapa] = [];
-                                }
-                                capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
-                            }
-                        }
-                    } else {
-                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
-                    }
-                }
-
-                // ===============================================================================
                 // ======== Collect Phones
                 const phones = {};
                 phoneTemp.slice(1).forEach(row => {
@@ -965,6 +968,50 @@ async function getCapaEveryFriday(paramSlot) {
                     phones[pic].superiorPn = phones[superior] ? phones[superior].pn : '';
                 });
 
+                // ===============================================================================
+                // ======== Collect CAPA
+                var capas = {};
+                var depts = {};
+
+                for (var i = 0; i < capaTemp.length; i++) {
+                    var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
+                    var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
+                    var sumberCapa = capaTemp[i][3] ? capaTemp[i][3].trim() : '-';
+                    var deskripsiCapa = capaTemp[i][15] ? capaTemp[i][15].trim() : '-';
+                    var targetDate = capaTemp[i][18] ? capaTemp[i][18].trim() : '-';
+
+                    if (isDateValid(targetDate)) {
+                        const targetDateObj = moment(targetDate, 'DD MMM YYYY', 'id', true);
+                        const currentDate = moment();
+                        if (targetDateObj.month() === currentDate.month() && targetDateObj.year() === currentDate.year()) {
+                            if (pic.includes(',') || pic.includes('/')) {
+                                var picSplit = pic.split(/[,\/]/);
+                                for (var j = 0; j < picSplit.length; j++) {
+                                    if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                        capas[picSplit[j].toUpperCase().trim()] = {};
+                                    }
+                                    if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                        capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                    }
+                                    capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                    depts[picSplit[j].toUpperCase().trim()] = dept;
+                                }
+                            } else {
+                                if (!capas.hasOwnProperty(pic)) {
+                                    capas[pic] = {};
+                                }
+                                if (!capas[pic].hasOwnProperty(sumberCapa)) {
+                                    capas[pic][sumberCapa] = [];
+                                }
+                                capas[pic][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                depts[pic] = dept;
+                            }
+                        }
+                    } else {
+                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
+                    }
+                }
+
                 // ========================= SEND NOTIFICATION =========================
                 // Loop through the main object
                 for (const pic in capas) {
@@ -972,6 +1019,7 @@ async function getCapaEveryFriday(paramSlot) {
 
                     if (capas.hasOwnProperty(pic)) {
                         const sumberCapaData = capas[pic];
+                        var dept = depts[pic];
 
                         if (pic == "NOPIC") {
                             message += '\n';
@@ -1252,53 +1300,7 @@ function isDateValid(dateString) {
     return parsedDate.isValid();
 }
 
-// =======================================================]
-async function cronReminder() {
-    // Example usage for the current year and month
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1; // month is 0-indexed
-
-    const datesAndDays = getDatesAndDaysOfMonth(currentYear, currentMonth);
-
-    // Hit API holiday
-    try {
-        const apiHoliday = await axios.get(`https://api-harilibur.vercel.app/api?month=${currentMonth}&year=${currentYear}`);
-
-        if (apiHoliday.status === 200) {
-            const apiHolidayData = apiHoliday.data;
-            var holidays = [];
-            for (var i = 0; i < apiHolidayData.length; i++) {
-                if (apiHolidayData[i].is_national_holiday == true) {
-                    holidays.push(apiHolidayData[i].holiday_date);
-                }
-            }
-
-            // Filter out null entries (weekends) and dates in holidays before using forEach
-            const filteredDatesAndDays = datesAndDays.filter(entry => entry !== null && !holidays.includes(entry.date));
-
-            if (filteredDatesAndDays.length > 0) {
-                // Find the max date in filteredDatesAndDays
-                const maxDate = filteredDatesAndDays.reduce((max, entry) => (new Date(entry.date) > new Date(max.date) ? entry : max), filteredDatesAndDays[0]);
-
-                // Get the current date
-                const currentDate = new Date();
-                const formattedCurrentDate = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}`;
-
-                // Check if the current date is the same as maxDate.date
-                if (maxDate.date === formattedCurrentDate) {
-                    getCapaReminder("ALL");
-                }
-            } else {
-                await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
-            }
-        } else {
-            await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Failed to hit API holiday.")
-        }
-    } catch (error) {
-        await sendLogTelegram("Doraymon: [" + LOG_LEVELS.ERROR + "] Holiday API " + error)
-    }
-}
-
+// =======================================================
 function getDatesAndDaysOfMonth(year, month) {
     const firstDayOfMonth = startOfMonth(new Date(year, month - 1)); // month is 0-indexed
 
@@ -1324,9 +1326,77 @@ function getDatesAndDaysOfMonth(year, month) {
     return filteredDatesAndDays;
 }
 
+async function hitApiHoliday() {
+    // Hit API holiday
+    try {
+        const apiHoliday = await axios.get(`https://api-harilibur.vercel.app/api`);
+
+        if (apiHoliday.status === 200) {
+            const apiHolidayData = apiHoliday.data;
+            var holidays = [];
+            for (var i = 0; i < apiHolidayData.length; i++) {
+                if (apiHolidayData[i].is_national_holiday == true) {
+                    holidays.push(apiHolidayData[i].holiday_date);
+                }
+            }
+            return holidays;
+        } else {
+            await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Failed to hit API holiday.");
+            return false;
+        }
+    } catch (error) {
+        await sendLogTelegram("Doraymon: [" + LOG_LEVELS.ERROR + "] Holiday API " + error);
+        return false;
+    }
+}
+
+async function cronReminder() {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // month is 0-indexed
+
+    const datesAndDays = getDatesAndDaysOfMonth(currentYear, currentMonth);
+
+    var holidays = await hitApiHoliday();
+    if (holidays != false) {
+        // Filter out null entries (weekends) and dates in holidays before using forEach
+        const filteredDatesAndDays = datesAndDays.filter(entry => entry !== null && !holidays.includes(entry.date));
+
+        if (filteredDatesAndDays.length > 0) {
+            // Find the max date in filteredDatesAndDays
+            const maxDate = filteredDatesAndDays.reduce((max, entry) => (new Date(entry.date) > new Date(max.date) ? entry : max), filteredDatesAndDays[0]);
+
+            // Get the current date
+            const currentDate = new Date();
+            const formattedCurrentDate = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${currentDate.getDate().toString().padStart(2, '0')}`;
+
+            // Check if the current date is the same as maxDate.date
+            if (maxDate.date === formattedCurrentDate) {
+                getCapaReminder("ALL");
+            }
+        } else {
+            await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
+        }
+    }
+}
+
 async function cronFriday(slot) {
     try {
-        await getCapaEveryFriday(slot);
+        const weekDates = [];
+        for (let i = 1; i <= 5; i++) {
+            weekDates.push(moment().day(i).format('YYYY-MM-DD'));
+        }
+
+        var holidays = await hitApiHoliday();
+        if (holidays != false) {
+            // Filter out null entries (weekends) and dates in holidays before using forEach
+            const filteredDatesAndDays = weekDates.filter(entry => entry !== null && !holidays.includes(entry));
+
+            if (filteredDatesAndDays.length > 0) {
+                await getCapaEveryFriday(slot);
+            } else {
+                await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification every friday.")
+            }
+        }
     } catch (error) {
         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Failed cron friday!\n' + error);
     }
@@ -1360,28 +1430,28 @@ app.post('/submit', (req, res) => {
 // const capaReminder = cron.schedule('30 7 1-5 * *', cronReminder); // per tanggal 5 (CAPA bulan berjalan)
 // const healthCheck = cron.schedule('* * * * *', cronHc)
 
-// const capaFridayOne = cron.schedule('30 8 * * 5', () => {
+// const capaFridayOne = cron.schedule('30 8 * * 1-5', () => {
 //     cronFriday(1)
 // })
-// const capaFridayTwo = cron.schedule('45 9 * * 5', () => {
+// const capaFridayTwo = cron.schedule('45 9 * * 1-5', () => {
 //     cronFriday(2)
 // })
-// const capaFridayThree = cron.schedule('30 10 * * 5', () => {
+// const capaFridayThree = cron.schedule('30 10 * * 1-5', () => {
 //     cronFriday(3)
 // })
-// const capaFridayFour = cron.schedule('45 10 * * 5', () => {
+// const capaFridayFour = cron.schedule('45 10 * * 1-5', () => {
 //     cronFriday(4)
 // })
-// const capaFridayFive = cron.schedule('0 13 * * 5', () => {
+// const capaFridayFive = cron.schedule('0 13 * * 1-5', () => {
 //     cronFriday(5)
 // })
-// const capaFridaySix = cron.schedule('30 13 * * 5', () => {
+// const capaFridaySix = cron.schedule('30 13 * * 1-5', () => {
 //     cronFriday(6)
 // })
-// const capaFridaySeven = cron.schedule('45 13 * * 5', () => {
+// const capaFridaySeven = cron.schedule('45 13 * * 1-5', () => {
 //     cronFriday(7)
 // })
-// const capaFridayEight = cron.schedule('00 14 * * 5', () => {
+// const capaFridayEight = cron.schedule('00 14 * * 1-5', () => {
 //     cronFriday(8)
 // })
 
