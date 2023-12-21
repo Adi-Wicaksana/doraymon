@@ -61,44 +61,61 @@ const client = new Client({
     }
 });
 
-const client2 = new Client({
-    puppeteer: {
-        headless: true,
-        args: ['--no-sandbox'],
-    }
-});
-
-let isClientInitialized = false;
+let isClientInitialized1 = false;
 // initializeClient();
 
 // Create an endpoint to initialize the client
 app.get('/initialize', (req, res) => {
-    if (isClientInitialized) {
-        res.json({
-            status: 200,
-            message: 'Client is already initialized'
+    const clientNumber = parseInt(req.query.clientNumber);
+
+    if (!clientNumber) {
+        return res.status(400).json({
+            status: 400,
+            message: 'Client number is required in the query parameters',
         });
     } else {
-        initializeClient();
-        res.json({
-            status: 200,
-            message: 'Client initialized'
-        });
+        switch (clientNumber) {
+            case 1:
+                if (isClientInitialized1) {
+                    res.json({
+                        status: 200,
+                        message: `Client ${clientNumber} is already initialized`,
+                    });
+                } else {
+                    initializeClient(clientNumber);
+                    res.json({
+                        status: 200,
+                        message: `Client ${clientNumber} initialized`,
+                    });
+                }
+                break;
+            default:
+                res.json({
+                    status: 500,
+                    message: `Client failed to initialized`,
+                });
+                break;
+        }
     }
 });
 
 // Initialize the client
-async function initializeClient() {
-    if (!isClientInitialized) {
-        client.initialize();
-        log('Doraymon: initialize client 1 WhatsApp', LOG_LEVELS.INFO);
-        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> initialize client WhatsApp </b>');
-        isClientInitialized = true;
+async function initializeClient(clientNumber) {
+    switch (clientNumber) {
+        case 1:
+            client.initialize();
+            log('Doraymon: initialize client 1 WhatsApp', LOG_LEVELS.INFO);
+            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> initialize client 1 WhatsApp </b>');
+            isClientInitialized1 = true;
+            break;
+        default:
+            break;
     }
 }
 
+// CLIENT 1
 client.on('loading_screen', (percent, message) => {
-    console.log('LOADING SCREEN', percent, message);
+    console.log('LOADING SCREEN 1', percent, message);
 });
 
 client.on('qr', async (qr) => {
@@ -108,31 +125,31 @@ client.on('qr', async (qr) => {
         // Send the QR code image to Telegram
         sendQRCodeToTelegram(qrCodeImage);
     } catch (error) {
-        log('Doraymon: generate QRCode\n' + error, LOG_LEVELS.ERROR);
-        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Generate QRCode\n' + error);
+        log('Doraymon: generate QRCode 1\n' + error, LOG_LEVELS.ERROR);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Generate QRCode 1\n' + error);
     }
 });
 
 client.on('authenticated', async () => {
-    log('Doraymon: WhatsApp authenticated', LOG_LEVELS.INFO);
-    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp authenticated </b>');
+    log('Doraymon: WhatsApp authenticated 1', LOG_LEVELS.INFO);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp authenticated 1</b>');
 });
 
 client.on('auth_failure', async (msg) => {
-    log(`Doraymon: WhatsApp authenticated failure`, LOG_LEVELS.WARNING);
-    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp authenticated failure </b>');
+    log(`Doraymon: WhatsApp authenticated failure 1`, LOG_LEVELS.WARNING);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp authenticated failure 1</b>');
 });
 
 client.on('disconnected', async (reason) => {
-    isClientInitialized = false;
-    log(`Doraymon: WhatsApp disconnected`, LOG_LEVELS.WARNING);
-    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp disconnected </b>');
+    isClientInitialized1 = false;
+    log(`Doraymon: WhatsApp disconnected 1`, LOG_LEVELS.WARNING);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp disconnected 1</b>');
 })
 
 client.on('ready', async () => {
-    isClientInitialized = true;
-    log(`Doraymon: WhatsApp ready`, LOG_LEVELS.INFO);
-    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp ready </b>');
+    isClientInitialized1 = true;
+    log(`Doraymon: WhatsApp ready 1`, LOG_LEVELS.INFO);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp ready 1</b>');
 });
 
 client.on('message_create', async msg => {
@@ -272,6 +289,51 @@ client.on('message_create', async msg => {
                 msg.reply("Can't get data 🙏🏻. Try again later.");
             }
         }
+    }
+});
+
+// CLIENT 2
+client2.on('loading_screen', (percent, message) => {
+    console.log('LOADING SCREEN 2', percent, message);
+});
+
+client2.on('qr', async (qr) => {
+    try {
+        // Generate the QR code as an image
+        const qrCodeImage = await generateQRCode(qr);
+        // Send the QR code image to Telegram
+        sendQRCodeToTelegram(qrCodeImage);
+    } catch (error) {
+        log('Doraymon: generate QRCode 2\n' + error, LOG_LEVELS.ERROR);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] Generate QRCode 2\n' + error);
+    }
+});
+
+client2.on('authenticated', async () => {
+    log('Doraymon: WhatsApp authenticated 2', LOG_LEVELS.INFO);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp authenticated 2</b>');
+});
+
+client2.on('auth_failure', async (msg) => {
+    log(`Doraymon: WhatsApp authenticated failure 2`, LOG_LEVELS.WARNING);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp authenticated failure 2</b>');
+});
+
+client2.on('disconnected', async (reason) => {
+    isClientInitialized1 = false;
+    log(`Doraymon: WhatsApp disconnected 2`, LOG_LEVELS.WARNING);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] <b> WhatsApp disconnected 2</b>');
+})
+
+client2.on('ready', async () => {
+    isClientInitialized1 = true;
+    log(`Doraymon: WhatsApp ready 2`, LOG_LEVELS.INFO);
+    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.INFO + '] <b> WhatsApp ready 2</b>');
+});
+
+client2.on('message_create', async msg => {
+    if (msg.body == '!ping') {
+        msg.reply("pong dari client 2");
     }
 });
 
