@@ -65,13 +65,14 @@ let isClientInitialized1 = false;
 // initializeClient();
 
 // Create an endpoint to initialize the client
-app.get('/initialize', (req, res) => {
-    const clientNumber = parseInt(req.query.clientNumber);
+app.use(express.json());
+app.post('/initialize', (req, res) => {
+    const clientNumber = parseInt(req.body.clientNumber);
 
     if (!clientNumber) {
         return res.status(400).json({
             status: 400,
-            message: 'Client number is required in the query parameters',
+            message: 'Client number is required in the request body',
         });
     } else {
         switch (clientNumber) {
@@ -92,7 +93,7 @@ app.get('/initialize', (req, res) => {
             default:
                 res.json({
                     status: 500,
-                    message: `Client failed to initialized`,
+                    message: `Client failed to initialize`,
                 });
                 break;
         }
@@ -197,8 +198,10 @@ client.on('message_create', async msg => {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
                                     message += `*${sumberCapa}*\n`;
 
+                                    var no = 1;
                                     for (const deskripsiCapa of deskripsiCapaArray) {
-                                        message += "- " + deskripsiCapa + "\n";
+                                        message += no + ". " + deskripsiCapa + "\n";
+                                        no++;
                                     }
                                 }
                             }
@@ -234,8 +237,10 @@ client.on('message_create', async msg => {
                             const valuesArray = picData[property];
                             message += `*${property}*\n`;
 
+                            var no = 1;
                             for (const value of valuesArray) {
-                                message += "- " + value + "\n";
+                                message += no + ". " + value + "\n";
+                                no++;
                             }
                         }
                     }
@@ -273,8 +278,10 @@ client.on('message_create', async msg => {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
                                     message += `*${sumberCapa}*\n`;
 
+                                    var no = 1;
                                     for (const deskripsiCapa of deskripsiCapaArray) {
-                                        message += "- " + deskripsiCapa + "\n";
+                                        message += no + ". " + deskripsiCapa + "\n";
+                                        no++;
                                     }
                                 }
                             }
@@ -292,64 +299,6 @@ client.on('message_create', async msg => {
     }
 });
 
-// app.post('/group-message', express.json(), async (req, res) => {
-//     try {
-//         const groupName = req.body.groupName;
-//         const messageText = req.body.messageText;
-//         const mention = req.body.mention;
-
-//         // Function to send a message to a group
-//         const sendToGroup = async (groupName, messageText) => {
-//             const chat = await client.getChats();
-//             const group = chat.find(chat => chat.isGroup && chat.name === groupName);
-
-//             if (group) {
-//                 if (mention != null) {
-//                     await group.sendMessage(messageText);
-//                 } else {
-//                     await group.sendMessage(`Hello @6281224164852`, { mentions: ["6281224164852@c.us"] });
-//                 }
-//                 console.log('Message sent to the group:', groupName);
-//                 res.status(200).json({ status: 200, response: 'Message sent successfully.' });
-//             } else {
-//                 console.log('Group not found:', groupName);
-//                 res.status(404).json({ status: 404, response: 'Group not found.' });
-//             }
-//         };
-
-//         // Call the sendToGroup function
-//         await sendToGroup(groupName, messageText);
-//     } catch (error) {
-//         console.error('Error sending message:', error);
-//         res.status(500).json({ status: 500, response: 'Error sending message.' });
-//     }
-// });
-
-// app.post('/private-message', express.json(), async (req, res) => {
-//     try {
-//         const phoneNumber = req.body.phoneNumber;
-//         const messageText = req.body.messageText;
-
-//         const formattedNumber = phoneNumber.includes('@c.us') ? phoneNumber : `${phoneNumber}@c.us`;
-
-//         // Send the message
-//         const chat = await client.getChats();
-//         const recipient = chat.find((chat) => chat.id._serialized === formattedNumber);
-
-//         if (recipient) {
-//             await recipient.sendMessage(messageText);
-//             console.log('Message sent to:', formattedNumber);
-//             res.status(200).json({ status: 200, response: 'Message sent successfully' });
-//         } else {
-//             console.log('Recipient not found:', formattedNumber);
-//             res.status(404).json({ status: 404, response: 'Recipient not found' });
-//         }
-//     } catch (error) {
-//         console.error('Error sending message:', error);
-//         res.status(500).json({ status: 500, response: 'Error sending message.' });
-//     }
-// });
-
 // Define a route to read the app.log file
 app.get('/api/logs', async (req, res) => {
     try {
@@ -365,6 +314,32 @@ app.get('/api/logs', async (req, res) => {
 });
 
 app.use(express.json());
+app.post('/stop-initialize', async (req, res) => {
+    try {
+        const clientNumber = parseInt(req.body.clientNumber);
+        if (clientNumber == 1) {
+            isClientInitialized1 = false;
+            client.destroy();
+            res.json({
+                status: 200,
+                message: "Stop initializing."
+            })
+        } else {
+            res.json({
+                status: 200,
+                message: "No Client."
+            })
+        }
+
+    } catch (error) {
+        console.error('Error processing request:', error);
+        res.json({
+            status: 500,
+            message: "Internal server error."
+        })
+    }
+})
+
 app.post('/reminder-capa', async (req, res) => {
     try {
         const requestBody = req.body;
@@ -379,7 +354,7 @@ app.post('/reminder-capa', async (req, res) => {
         } else if (reminder.status == 201) {
             res.json({
                 status: 200,
-                message: "trigger CAPA for " + to + " empty."
+                message: reminder.message
             })
         } else {
             res.json({
@@ -680,11 +655,11 @@ async function getCapaReminder(to) {
 
         if (raw.status == 200) {
             if (raw.capas.length > 0 && raw.phones.length > 0) {
-                if (to == "ALL") {
-                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
-                } else {
-                    var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[16] && row[16].toUpperCase().includes(to.toUpperCase()));
-                }
+                // if (to == "ALL") {
+                //     var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN');
+                // } else {
+                var capaTemp = raw.capas.filter((row) => row[23] && row[23].toUpperCase() === 'OPEN' && row[16] && row[16].toUpperCase().includes(to.toUpperCase()));
+                // }
                 var phoneTemp = raw.phones;
 
                 // ===============================================================================
@@ -717,6 +692,8 @@ async function getCapaReminder(to) {
                 var capas = {};
                 var depts = {};
 
+                var invalidDate = [];
+
                 for (var i = 0; i < capaTemp.length; i++) {
                     var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
                     var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
@@ -731,7 +708,16 @@ async function getCapaReminder(to) {
                             if (pic.includes(',') || pic.includes('/')) {
                                 var picSplit = pic.split(/[,\/]/);
                                 for (var j = 0; j < picSplit.length; j++) {
-                                    if (to.toUpperCase() == "ALL") {
+                                    // if (to.toUpperCase() == "ALL") {
+                                    //     if (!capas.hasOwnProperty(picSplit[j].trim())) {
+                                    //         capas[picSplit[j].toUpperCase().trim()] = {};
+                                    //     }
+                                    //     if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
+                                    //         capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
+                                    //     }
+                                    //     capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
+                                    // } else {
+                                    if (to.toUpperCase() == picSplit[j].toUpperCase()) {
                                         if (!capas.hasOwnProperty(picSplit[j].trim())) {
                                             capas[picSplit[j].toUpperCase().trim()] = {};
                                         }
@@ -739,17 +725,8 @@ async function getCapaReminder(to) {
                                             capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
                                         }
                                         capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
-                                    } else {
-                                        if (to.toUpperCase() == picSplit[j].toUpperCase()) {
-                                            if (!capas.hasOwnProperty(picSplit[j].trim())) {
-                                                capas[picSplit[j].toUpperCase().trim()] = {};
-                                            }
-                                            if (!capas[picSplit[j].trim()].hasOwnProperty(sumberCapa)) {
-                                                capas[picSplit[j].toUpperCase().trim()][sumberCapa] = [];
-                                            }
-                                            capas[picSplit[j].toUpperCase().trim()][sumberCapa].push(deskripsiCapa + ' (' + targetDate + ')');
-                                        }
                                     }
+                                    // }
                                     depts[picSplit[j].toUpperCase().trim()] = dept;
                                 }
                             } else {
@@ -764,6 +741,10 @@ async function getCapaReminder(to) {
                             }
                         }
                     } else {
+                        if (!invalidDate.includes(pic)) {
+                            // Push the value to the array
+                            invalidDate.push(pic);
+                        }
                         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
@@ -784,8 +765,10 @@ async function getCapaReminder(to) {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
                                     message += `<b>${sumberCapa}</b>\n`;
 
+                                    var no = 1;
                                     for (const deskripsiCapa of deskripsiCapaArray) {
-                                        message += "- " + deskripsiCapa + "\n";
+                                        message += no + ". " + deskripsiCapa + "\n";
+                                        no++;
                                     }
                                 }
                             }
@@ -809,10 +792,12 @@ async function getCapaReminder(to) {
                                 for (const sumberCapa in sumberCapaData) {
                                     if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                         const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += ` ${sumberCapa} \n`;
+                                        message += `*${sumberCapa}* \n`;
 
+                                        var no = 1;
                                         for (const deskripsiCapa of deskripsiCapaArray) {
-                                            message += "- " + deskripsiCapa + "\n";
+                                            message += no + ". " + deskripsiCapa + "\n";
+                                            no++;
                                         }
                                     }
                                 }
@@ -821,61 +806,71 @@ async function getCapaReminder(to) {
 
                                 await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
                             } else {
-                                message += `*Department: ${dept}*`;
-                                message += '\n\n';
-                                message += `*PIC: ${pic} @${number}* \n`;
+                                if (!invalidDate.includes(pic)) {
+                                    message += `*Department: ${dept}*`;
+                                    message += '\n\n';
+                                    message += `*PIC: ${pic} @${number}* \n`;
 
-                                for (const sumberCapa in sumberCapaData) {
-                                    if (sumberCapaData.hasOwnProperty(sumberCapa)) {
-                                        const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += `*${sumberCapa}* \n`;
+                                    for (const sumberCapa in sumberCapaData) {
+                                        if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                            const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                            message += `*${sumberCapa}* \n`;
 
-                                        for (const deskripsiCapa of deskripsiCapaArray) {
-                                            message += "- " + deskripsiCapa + "\n";
+                                            var no = 1;
+                                            for (const deskripsiCapa of deskripsiCapaArray) {
+                                                message += no + ". " + deskripsiCapa + "\n";
+                                                no++;
+                                            }
                                         }
                                     }
-                                }
 
-                                message += '\n';
-                                message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
+                                    message += '\n';
+                                    message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
 
-                                if (isValidPhoneNumber(ccNumber)) {
-                                    message += `\n\ncc: ${cc} @${ccNumber}`;
-                                }
-
-                                // Function to send a message to a group
-                                const chat = await client.getChats();
-                                const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
-
-                                try {
-                                    if (group) {
-                                        if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
-                                            await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
-                                        } else if (isValidPhoneNumber(number)) {
-                                            await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
-                                        }
-                                    } else {
-                                        log('Doraymon: get CAPA reminder \n cannot find group.', LOG_LEVELS.WARNING);
-                                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot find group.');
+                                    if (isValidPhoneNumber(ccNumber)) {
+                                        message += `\n\ncc: ${cc} @${ccNumber}`;
                                     }
-                                } catch (error) {
-                                    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot mention ' + number + ' cc : ' + ccNumber);
+
+                                    // Function to send a message to a group
+                                    const chat = await client.getChats();
+                                    const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
+
+                                    try {
+                                        if (group) {
+                                            if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
+                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
+                                            } else if (isValidPhoneNumber(number)) {
+                                                await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                            }
+                                        } else {
+                                            log('Doraymon: get CAPA reminder \n cannot find group.', LOG_LEVELS.WARNING);
+                                            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot find group.');
+                                        }
+                                    } catch (error) {
+                                        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA reminder \ncannot mention ' + number + ' cc : ' + ccNumber);
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                return { status: 200, data: "success" };
+
+                if (invalidDate.length > 0) {
+                    return { status: 201, message: "please fix the data" };
+                } else {
+                    return { status: 200, message: "success" };
+                }
+
             } else {
-                return { status: 201, data: {} }
+                return { status: 201, message: "data empty" }
             }
         } else {
-            return { status: 500, data: {} };
+            return { status: 500, message: "cannot initialize data" };
         }
     } catch (error) {
         log('Doraymon: get CAPA reminder \n' + error, LOG_LEVELS.ERROR);
         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA reminder error \nCheck API Log.');
-        return { status: 500, data: {} };
+        return { status: 500, message: error.message };
     }
 }
 
@@ -990,6 +985,8 @@ async function getCapaEveryFriday(paramSlot) {
                 var capas = {};
                 var depts = {};
 
+                var invalidDate = [];
+
                 for (var i = 0; i < capaTemp.length; i++) {
                     var pic = capaTemp[i][16] ? capaTemp[i][16].toUpperCase().trim() : 'NOPIC';
                     var dept = capaTemp[i][17] ? capaTemp[i][17].toUpperCase().trim() : 'NODEPT';
@@ -1025,6 +1022,10 @@ async function getCapaEveryFriday(paramSlot) {
                             }
                         }
                     } else {
+                        if (!invalidDate.includes(pic)) {
+                            // Push the value to the array
+                            invalidDate.push(pic);
+                        }
                         await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] \n<b>✖️✖️ CAPA DUE DATE IS NOT VALID ✖️✖️</b> \n' + pic + ' - ' + sumberCapa + ' - ' + deskripsiCapa);
                     }
                 }
@@ -1045,8 +1046,10 @@ async function getCapaEveryFriday(paramSlot) {
                                     const deskripsiCapaArray = sumberCapaData[sumberCapa];
                                     message += `<b>${sumberCapa}</b>\n`;
 
+                                    var no = 1;
                                     for (const deskripsiCapa of deskripsiCapaArray) {
-                                        message += "- " + deskripsiCapa + "\n";
+                                        message += no + ". " + deskripsiCapa + "\n";
+                                        no++;
                                     }
                                 }
                             }
@@ -1072,10 +1075,12 @@ async function getCapaEveryFriday(paramSlot) {
                                 for (const sumberCapa in sumberCapaData) {
                                     if (sumberCapaData.hasOwnProperty(sumberCapa)) {
                                         const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += ` ${sumberCapa} \n`;
+                                        message += `<b>${sumberCapa}</b>\n`;
 
+                                        var no = 1;
                                         for (const deskripsiCapa of deskripsiCapaArray) {
-                                            message += "- " + deskripsiCapa + "\n";
+                                            message += no + ". " + deskripsiCapa + "\n";
+                                            no++;
                                         }
                                     }
                                 }
@@ -1084,49 +1089,53 @@ async function getCapaEveryFriday(paramSlot) {
 
                                 await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ CAPA NO PIC NUMBER ✖️✖️</b> \n" + message);
                             } else {
-                                message += `*Department: ${dept}*`;
-                                message += '\n\n';
-                                message += `*PIC: ${pic} @${number}* \n`;
+                                if (!invalidDate.includes(pic)) {
+                                    message += `*Department: ${dept}*`;
+                                    message += '\n\n';
+                                    message += `*PIC: ${pic} @${number}* \n`;
 
-                                for (const sumberCapa in sumberCapaData) {
-                                    if (sumberCapaData.hasOwnProperty(sumberCapa)) {
-                                        const deskripsiCapaArray = sumberCapaData[sumberCapa];
-                                        message += `*${sumberCapa}* \n`;
+                                    for (const sumberCapa in sumberCapaData) {
+                                        if (sumberCapaData.hasOwnProperty(sumberCapa)) {
+                                            const deskripsiCapaArray = sumberCapaData[sumberCapa];
+                                            message += `*${sumberCapa}* \n`;
 
-                                        for (const deskripsiCapa of deskripsiCapaArray) {
-                                            message += "- " + deskripsiCapa + "\n";
+                                            var no = 1;
+                                            for (const deskripsiCapa of deskripsiCapaArray) {
+                                                message += no + ". " + deskripsiCapa + "\n";
+                                                no++;
+                                            }
                                         }
                                     }
-                                }
 
-                                message += '\n';
-                                message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
+                                    message += '\n';
+                                    message += 'Apa ada progress terbaru? Mohon untuk diupdate ya';
 
-                                if (isValidPhoneNumber(ccNumber)) {
-                                    message += `\n\ncc: ${cc} @${ccNumber}`;
-                                }
+                                    if (isValidPhoneNumber(ccNumber)) {
+                                        message += `\n\ncc: ${cc} @${ccNumber}`;
+                                    }
 
-                                // Function to send a message to a group
-                                const chat = await client.getChats();
-                                const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
+                                    // Function to send a message to a group
+                                    const chat = await client.getChats();
+                                    const group = chat.find(chat => chat.isGroup && chat.name === capaGroup);
 
-                                if (slot == null || slot == "" || slot == undefined || slot == "-") {
-                                    await sendLogTelegram(`Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ PIC NO SLOT ✖️✖️</b> ${pic} \n`);
-                                } else {
-                                    if (slot == paramSlot) {
-                                        try {
-                                            if (group) {
-                                                if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
-                                                    await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
-                                                } else if (isValidPhoneNumber(number)) {
-                                                    await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                    if (slot == null || slot == "" || slot == undefined || slot == "-") {
+                                        await sendLogTelegram(`Doraymon: [" + LOG_LEVELS.WARNING + "] \n<b>✖️✖️ PIC NO SLOT ✖️✖️</b> ${pic} \n`);
+                                    } else {
+                                        if (slot == paramSlot) {
+                                            try {
+                                                if (group) {
+                                                    if (isValidPhoneNumber(number) && isValidPhoneNumber(ccNumber)) {
+                                                        await group.sendMessage(`${message}`, { mentions: [number + "@c.us", ccNumber + "@c.us"] });
+                                                    } else if (isValidPhoneNumber(number)) {
+                                                        await group.sendMessage(`${message}`, { mentions: [number + "@c.us"] });
+                                                    }
+                                                } else {
+                                                    log('Doraymon: get CAPA cron \n cannot find group.', LOG_LEVELS.WARNING);
+                                                    await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA cron \ncannot find group.');
                                                 }
-                                            } else {
-                                                log('Doraymon: get CAPA every friday \n cannot find group.', LOG_LEVELS.WARNING);
-                                                await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA every friday \ncannot find group.');
+                                            } catch (error) {
+                                                await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA cron \ncannot mention ' + number + ' cc : ' + ccNumber);
                                             }
-                                        } catch (error) {
-                                            await sendLogTelegram('Doraymon: [' + LOG_LEVELS.WARNING + '] get CAPA every friday \ncannot mention ' + number + ' cc : ' + ccNumber);
                                         }
                                     }
                                 }
@@ -1142,8 +1151,8 @@ async function getCapaEveryFriday(paramSlot) {
             return { status: 500, data: {} };
         }
     } catch (error) {
-        log('Doraymon: get CAPA every friday \n' + error, LOG_LEVELS.ERROR);
-        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA every friday \n' + error);
+        log('Doraymon: get CAPA cron \n' + error, LOG_LEVELS.ERROR);
+        await sendLogTelegram('Doraymon: [' + LOG_LEVELS.ERROR + '] get CAPA cron \n' + error);
         return { status: 500, data: {} };
     }
 }
@@ -1388,7 +1397,18 @@ async function cronReminder() {
 
             // Check if the current date is the same as maxDate.date
             if (maxDate.date === formattedCurrentDate) {
-                getCapaReminder("ALL");
+                const delay = 300000; // 5 minutes in milliseconds
+
+                // Call the function for the first iteration immediately
+                cronFriday(1);
+
+                for (let i = 2; i <= 8; i++) {
+                    // Wrap setTimeout in a Promise for easier async/await handling
+                    await new Promise(resolve => setTimeout(resolve, delay));
+
+                    // Call the function for the current iteration
+                    cronFriday(i);
+                }
             }
         } else {
             await sendLogTelegram("Doraymon: [" + LOG_LEVELS.WARNING + "] Unavailable date to do notification.")
@@ -1443,6 +1463,25 @@ app.post('/submit', (req, res) => {
     });
 });
 
+app.post('/cron-on-five', async (req, res) => {
+    const delay = 600000; // 60000 = 1 minutes in milliseconds
+
+    // Call the function for the first iteration immediately
+    cronFriday(1);
+
+    for (let i = 2; i <= 8; i++) {
+        // Wrap setTimeout in a Promise for easier async/await handling
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        // Call the function for the current iteration
+        cronFriday(i);
+    }
+
+    res.json({
+        status: 200,
+        message: 'cron on five finished',
+    });
+});
 // Schedule the job with the cron expression
 // const capaReminder = cron.schedule('30 7 1-5 * *', cronReminder); // per tanggal 5 (CAPA bulan berjalan)
 // const healthCheck = cron.schedule('* * * * *', cronHc)
